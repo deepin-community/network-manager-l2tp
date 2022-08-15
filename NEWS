@@ -1,0 +1,247 @@
+==========================================================
+NetworkManager-l2tp-1.20.0
+Overview of changes since NetworkManager-l2tp-1.8.6
+==========================================================
+
+Changes:
+* Support for kl2tpd from Katalix's go-l2tp project added.
+* Support for Multilink PPP added.
+* L2TP ephemeral source port checkbox added.
+* deprecated libnm-glib/libnm-util code removed and
+  --with-libnm-glib configure option removed.
+* Honors $CHARONDEBUG and $PLUTODEBUG even without --debug.
+* Sourcecode reformated with clang-format.
+* intltool for i18n build support no longer required.
+* Updated translations.
+
+==========================================================
+NetworkManager-l2tp-1.8.6
+Overview of changes since NetworkManager-l2tp-1.8.4
+==========================================================
+
+Changes:
+* Fix for preventing Fedora RPMs from building.
+  add missing properties/import-export.c to POTFILES.in
+
+==========================================================
+NetworkManager-l2tp-1.8.4
+Overview of changes since NetworkManager-l2tp-1.8.2
+==========================================================
+
+Changes:
+* Update translations.
+* Update strings for new dialog design in gnome-shell.
+  e.g use "Password" instead of "Password:".
+* Use /usr/share/metainfo for AppData files.
+* Move D-Bus policy file to /usr/share/dbus-1/system.d/
+* Add --with-nm-ipsec-nss-dir configure switch for Libreswan NSS
+  database location with default value of /var/lib/ipsec/nss
+* Do not add broken route to VPN gateway IP address.
+* Add back import/export capability.
+* update default PPPD_PLUGIN_DIR to ${libdir}/pppd/2.4.8
+* Fix for user certificate password flags for connection editor.
+
+==========================================================
+NetworkManager-l2tp-1.8.2
+Overview of changes since NetworkManager-l2tp-1.8.0
+==========================================================
+
+Changes:
+* Fixes for user certificate support.
+* Remove modp1024 in default phase 1 algorithms for Libreswan, as
+  libreswan >= 3.30 is no longer built with DH2 (modp1024) support.
+* Provide --enable-libreswan-dh2 configure switch for older libreswan versions.
+* KDE plasma-nm compatibility for "Gateway ID".
+
+==========================================================
+NetworkManager-l2tp-1.8.0
+Overview of changes since NetworkManager-l2tp-1.2.16
+==========================================================
+
+* User and machine TLS certificate support.
+* New dependency on OpenSSL's libcrypto (>= 1.1.0).
+* New dependency on Network Security Services (NSS) libraries.
+* Routines to auto detect the following TLS certificate and private key file
+  formats by looking at the file contents and not the file extension, also
+  determines if the files are encrypted with a password, which includes
+  testing if the password is the empty string or NULL :
+  - PKCS#12 certificates.
+  - X509 certificates (PEM or DER).
+  - PKCS#8 private keys (PEM or DER)
+  - traditional OpenSSL RSA, DSA and ECDSA private keys (PEM or DER).
+* Routines to import certificates and privates keys into a Libreswan NSS
+  database.
+* Grey out the auth type selection for user authentication if EAP-TLS
+  pppd patch not detected.
+* Update translations.
+
+==========================================================
+NetworkManager-l2tp-1.2.16
+Overview of changes since network-manager-l2tp-1.2.14
+==========================================================
+
+* Update translations.
+* Fix label geometry in LT2P dialog box.
+* Remove "Prevalent Algorithms" button, override default algorithms.
+  Made the phase 1 & 2 proposals previously provided by the Prevalent
+  Algorithms button the new default for the IKEv1 proposals.
+
+==========================================================
+NetworkManager-l2tp-1.2.14
+Overview of changes since network-manager-l2tp-1.2.12
+==========================================================
+
+* Update translations by merging from various sources.
+* Changed Legacy Proposal button to Prevalent Algorithms button.
+  Clicking Prevalent Algorithms button populates Phase 1 and 2 Algorithm text
+  entry boxes with the following proposals, which are a merge of Windows 10
+  and macOS/iOS/iPadOS L2TP clients' IKEv1 proposals.
+  - Phase 1 - Main Mode :
+    {enc=AES_CBC_256 integ=HMAC_SHA2_256_128 group=MODP_2048},
+    {enc=AES_CBC_256 integ=HMAC_SHA2_256_128 group=MODP_1536},
+    {enc=AES_CBC_256 integ=HMAC_SHA2_256_128 group=MODP_1024},
+    {enc=AES_CBC_256 integ=HMAC_SHA1_96 group=MODP_2048},
+    {enc=AES_CBC_256 integ=HMAC_SHA1_96 group=MODP_1536},
+    {enc=AES_CBC_256 integ=HMAC_SHA1_96 group=MODP_1024},
+    {enc=AES_CBC_256 integ=HMAC_SHA1_96 group=ECP_384},
+    {enc=AES_CBC_128 integ=HMAC_SHA1_96 group=MODP_1024},
+    {enc=AES_CBC_128 integ=HMAC_SHA1_96 group=ECP_256},
+    {enc=3DES_CBC integ=HMAC_SHA1_96 group=MODP_2048},
+    {enc=3DES_CBC integ=HMAC_SHA1_96 group=MODP_1024}
+  - Phase 2 - Quick Mode :
+    {enc=AES_CBC_256 integ=HMAC_SHA1_96},
+    {enc=AES_CBC_128 integ=HMAC_SHA1_96},
+    {enc=3DES_CBC integ=HMAC_SHA1_96}
+* Added use IKEv2 key exchange option.
+* Improved debugging output for Libreswan and strongSwan.
+  Libreswan debugging can now be cutomized by setting the `PLUTODEBUG`
+  environment variable.
+  strongSwan debugging can now  be cutomized by setting the `CHARONDEBUG`
+  environment variable.
+* Gray out "IPsec Settings..." button if no *swan found.
+  Also fix crash if "IPsec Settings..." button pressed and no *swan installed.
+
+==========================================================
+NetworkManager-l2tp-1.2.12
+Overview of changes since NetworkManager-l2tp-1.2.10
+==========================================================
+
+* Update translations by merging from various sources.
+* Added Legacy Proposal button.
+  Clicking Legacy Proposals button populates Phase 1 and 2 Algorithm text entry
+  boxes with proposals offered by Windows Server 2019:
+  - AES256, SHA-1, ECP384 and AES128, SHA-1, ECP256 strong proposals.
+    strongSwan recommends not using SHA-1 in its security recommendations
+    documentation.
+  - 3DES, SHA-1, MODP1024 broken proposal.
+    Legacy Windows 2000 Server era proposal still commonly offered, especially
+    with consumer routers
+* Added following IPsec configuration options:
+  - Phase1 Lifetime - ikelifetime.
+  - Phase2 Lifetime - salifetime (libreswan) / lifetime (strongswan).
+  - Use IP compression - compress.
+  - Disable PFS - pfs.
+* renamed Gateway ID to Remote ID and updated GUI tooltip.
+* removed restrictions that only IP addresses are allowed for the Remote ID.
+* Generated config file changes, following config files :
+  - /var/run/nm-l2tp-xl2tpd-_UUID_.conf
+  - /var/run/nm-l2tp-xl2tpd-control-_UUID_
+  - /var/run/nm-l2tp-xl2tpd-_UUID_.pid
+  - /var/run/nm-l2tp-ppp-options-_UUID_
+  are now:
+  - /var/run/nm-l2tp-_UUID_/xl2tpd.conf
+  - /var/run/nm-l2tp-_UUID_/xl2tpd-control
+  - /var/run/nm-l2tp-_UUID_/xl2tpd-.pid
+  - /var/run/nm-l2tp-_UUID_/ppp-options
+* Use same IP secrets file for all L2TP connections, 
+  /etc/ipsec.d/ipsec.nm-l2tp.secrets is now used instead of
+  /etc/ipsec.d/nm-l2tp-ipsec-_UUID_.secrets, where _UUID_ was the UUID of the
+  VPN connection.
+* Force ikev2=never for Libreswan 
+  ikev2=permit is the implicit default setting, which tries to detect
+  a "bid down" attack from IKEv2 to IKEv1 and can have an impact on
+  the default proposals.
+* Add nm-l2tp-service- prefix back to pppd ipparam argument.
+  The ipparam argument is used by a condition in the Debian resolvconf's
+  /etc/ppp/ip-up.d/000resolvconf script.
+* PSK is now Base64 encoded, allows PSK to contain double quotation mark (").
+* Fix build without GTK/Gnome.
+* Legacy KDE Plasman-nm user certificate support.
+* libnm-glib compatibility (NetworkManager < 1.0) is disabled by default.
+  It can be enabled by passing --with-libnm-glib to configure script.
+  Nobody should need it by now. Users that still use this are encouraged
+  to let us know before the libnm-glib support is removed for good.
+* The auth helper in external UI mode can now be run without a display
+  server. Future nmcli version will utilize this for handling the
+secrets without a graphical desktop.
+
+=======================================================
+NetworkManager-l2tp-1.2.10
+Overview of changes since NetworkManager-l2tp-1.2.8
+=======================================================
+
+This is a new stable release of NetworkManager-l2tp.  Notable changes include:
+
+* Point version 1.2.10 appdata image URIs to nm-1-2 github branch:
+  https://raw.githubusercontent.com/nm-l2tp/NetworkManager-l2tp/nm-1-2/appdata
+* Corrected force UDP encapsulation toggle button behavior.
+* Workaround for libreswan `ipsec status` issue with short (< 8 char) PSKs.
+* fix gcc -Wimplicit-fallthrough warning.
+
+=======================================================
+NetworkManager-l2tp-1.2.8
+Overview of changes since NetworkManager-l2tp-1.2.6
+=======================================================
+
+This is a new stable release of NetworkManager-l2tp.  Notable changes include:
+
+* Updated translations, merged from NetworkManager-applet,
+  NetworkManager-libreswan, NetworkManager-pptp and
+  KDE Plasma NetworkManagement L2TP. Removed obsolete translations.
+* Enforce UDP encapsulation toggle button fix.
+* Stop strongSwan service when a connection cannot be established.
+* fix entries in Debian Lintian spelling-error-in-binary report.
+* configure --runstatedir support if using Autoconf >= 2.7.0.
+* If "Automatic (VPN) Addresses Only" mode is enabled in the the IPv4
+  config settings, do not use the pppd usepeerdns option.
+  i.e. do not overide /etc/resolv.conf.
+
+=======================================================
+NetworkManager-l2tp-1.2.6
+Overview of changes since NetworkManager-l2tp-1.2.4
+=======================================================
+
+This is a new stable release of NetworkManager-l2tp.  Notable changes include:
+
+* If L2TP port 1701 is already in use, no longer writes
+  "leftprotoport=udp/l2tp" (which is equivalent to "leftprotoport=udp/1701") to
+  the ipsec config file. This was done to ensures L2TP is encapsulated in IPsec
+* Uses UUID instead of PID for run-time generated filenames
+* No longer temporarily replaces system /etc/ipsec.secrets file
+* IPsec rekeying is now possible because the following file remains for the
+  lifetime of the VPN connection :
+    /etc/ipsec.d/nm-l2tp-ipsec-UUID.secrets
+* Following line is appended to /etc/ipsec.secrets if the include line is
+  missing:
+    include /etc/ipsec.d/*.secrets
+* Removed IPsec Group Name from user interface
+* Added IPsec Phase 1 (ike) & Phase 2 (esp) to user interface
+* New timeout code for IPsec connection up script.
+
+=======================================================
+NetworkManager-l2tp-1.2.4
+Overview of changes since NetworkManager-l2tp-1.2.2
+=======================================================
+
+This is a new stable release of NetworkManager-l2tp.  Notable changes include:
+
+* Prefer building against stable libsecret API
+* Split libnm-vpn-plugin-l2tp.so into a GTK-free core plugin
+  usable by nmcli and a UI plugin for nm-applet and gnome components
+* Successfully builds on 32bit Linux 
+* Explicitly check strongSwan connection has been established
+  and not trust use exit status of strongSwan 'ipsec up' command
+* Support weaker initial proposals on later versions of strongSwan
+* Support IP addresses for IPsec leftid and rightid
+* 10 second timeout for ipsec starter process
+
