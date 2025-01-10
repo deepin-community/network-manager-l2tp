@@ -1,5 +1,163 @@
-network-manager-l2tp (1.20.0-deepin) stable; urgency=medium
+network-manager-l2tp (1.20.20-1) unstable; urgency=medium
 
-  * ['Rebuild  against by  current gcc 11.2']
+  * New upstream version 1.20.20.
 
- -- Deepin Packages Builder <packages@deepin.org>  Wed, 10 Aug 2022 21:23:40 +0800
+ -- Douglas Kosovic <doug@uq.edu.au>  Wed, 25 Dec 2024 13:29:00 +1000
+
+network-manager-l2tp (1.20.16-1) unstable; urgency=medium
+
+  * New upstream version 1.20.16.
+  * Bump Standards-Version to 4.7.0
+
+ -- Douglas Kosovic <doug@uq.edu.au>  Mon, 27 May 2024 23:10:00 +1000
+
+network-manager-l2tp (1.20.12-1) unstable; urgency=medium
+
+  * New upstream version 1.20.12.
+  * Change L2TP daemon dependency to go-l2tp or xl2tpd.
+  * Change Build-Depends from pkg-config to pkgconf.
+
+ -- Douglas Kosovic <doug@uq.edu.au>  Tue, 13 Feb 2024 07:19:00 +1000
+
+network-manager-l2tp (1.20.10-1) unstable; urgency=medium
+
+  * New upstream version 1.20.10.
+  * Install helper binaries into /usr/libexec (Closes: #1054306)
+  * Bump Standards-Version to 4.6.2
+  * Add explicit Build-Depends on pkg-config
+
+ -- Douglas Kosovic <doug@uq.edu.au>  Tue, 24 Oct 2023 08:03:00 +1000
+
+network-manager-l2tp (1.20.8-1) unstable; urgency=medium
+
+  * New upstream release
+  * New upstream/signing-key.asc
+  * Add explicit gettext >= 0.19 build dependency
+  * Use execute_before instead of override for dh_install
+  * Use the GitHub API when checking for new upstream releases
+  * Remove constraints unnecessary since buster:
+    + Build-Depends: Drop versioned constraint on libglib2.0-dev, libgtk-3-dev,
+      libnma-dev, libsecret-1-dev and ppp-dev.
+
+ -- Douglas Kosovic <doug@uq.edu.au>  Sat, 31 Dec 2022 08:30:00 +1000
+
+network-manager-l2tp (1.20.2-1) unstable; urgency=medium
+
+  * New upstream release
+  * Enable GTK 4 support (closes: #1009102)
+  * Add Build-Depends libgtk-4-bin (>= 4.6.2)
+    to ensure gtk4-builder-tool does not need a display
+  * Bump libglib2.0-dev Build-Depends to (>= 2.34)
+  * Bump libgtk-3-dev Build-Depends to (>= 3.16)
+  * Enable all hardening build flags
+  * Drop unnecessary network-manager version contraint
+  * Change debian-branch from master to main in gbp.conf
+
+ -- Douglas Kosovic <doug@uq.edu.au>  Wed, 20 Apr 2022 08:40:00 +1000
+
+network-manager-l2tp (1.20.0-1) unstable; urgency=medium
+
+  * New upstream release
+  * Bump Standards-Version to 4.6.0
+  * Fix capitalization error in package description
+  * Update dependencies for NetworkManager >= 1.20.0
+  * Remove redundant GPLv2/OpenSSL license conflict patch
+  * Remove redundant intltool Build-Depends
+  * Remove obsolete debian/network-manager-l2tp.maintscript
+  * Drop override for dh_missing
+    No longer needed with debhelper-compat 13
+
+ -- Douglas Kosovic <doug@uq.edu.au>  Tue, 26 Oct 2021 09:30:00 +1000
+
+network-manager-l2tp (1.8.6-1) experimental; urgency=medium
+
+  * New upstream release.
+  * Update Source and add Upstream-Contact in debian/copyright
+  * Remove unused dh_makeshlibs override
+  * Bump Standards-Version to 4.5.1
+  * Bump watch file version to 4
+  * Bump debhelper to 13.
+  * Use /usr/share/metainfo for AppData files
+  * Remove redundant patch to move D-Bus policy file
+  * Apply patch to remove GPLv2/OpenSSL license conflict in README.md
+
+ -- Douglas Kosovic <doug@uq.edu.au>  Thu, 25 Mar 2021 22:49:00 +1000
+
+network-manager-l2tp (1.2.18-1) unstable; urgency=medium
+
+  * New upstream release.
+  * Remove redundant -Wl,--as-needed as this is now default from Bullseye.
+  * Updated copyright file.
+  * Bump debhelper from old 11 to 12.
+  * Set debhelper-compat version in Build-Depends.
+  * Set upstream metadata fields: Bug-Database, Bug-Submit (from
+    ./configure), Repository, Repository-Browse.
+
+ -- Douglas Kosovic <doug@uq.edu.au>  Tue, 05 May 2020 17:36:00 +1000
+
+network-manager-l2tp (1.2.16-1) unstable; urgency=medium
+
+  * New upstream release.
+
+ -- Douglas Kosovic <doug@uq.edu.au>  Mon, 04 Nov 2019 22:48:00 +1000
+
+network-manager-l2tp (1.2.14-1) unstable; urgency=medium
+
+  * New upstream release.
+  * Bump Standards-Version to 4.4.1
+  * Set Rules-Requires-Root to no
+  * Move D-Bus policy file to /usr/share/dbus-1/system.d/
+  * Changes related to upstream GitHub project rename from network-manager-l2tp
+    to NetworkManager-l2tp.
+  * Use upstream provided xz tarball instead of GitHub generated gz tarball.
+  * Added preinst script to remove network-manager-l2tp <= 1.2.10
+    /etc/ipsec.d/nm-l2tp-ipsec-*.secrets transient files.
+  * Added postrm script to remove /etc/ipsec.d/ipsec.nm-l2tp.secrets transient
+    file.
+  * Updated copyright file.
+
+ -- Douglas Kosovic <doug@uq.edu.au>  Thu, 10 Oct 2019 22:32:00 +1000
+
+network-manager-l2tp (1.2.10-1) unstable; urgency=medium
+
+  * New upstream release.
+  * Switch to dh_missing and abort on uninstalled files
+  * Bump debhelper compat level to 11
+  * Bump Standards-Version to 4.1.3
+  * Use architecture.mk provided by dpkg-dev to retrieve DEB_HOST_MULTIARCH
+  * Use --as-needed to avoid unnecessary shlibs dependencies
+  * Switch URLs to https
+
+ -- Douglas Kosovic <doug@uq.edu.au>  Wed, 28 Mar 2018 20:10:00 +1000
+
+network-manager-l2tp (1.2.8-2) unstable; urgency=medium
+
+  * No longer depends on network-manager-dev
+  * Stop building with libnm-glib compat support
+
+ -- Douglas Kosovic <doug@uq.edu.au>  Mon, 22 Jan 2018 22:00:00 +1000
+
+network-manager-l2tp (1.2.8-1) unstable; urgency=medium
+
+  * New upstream release.
+  * Replaced depends strongswan with depends strongswan | libreswan.
+  * Updated copyright file.
+
+ -- Douglas Kosovic <doug@uq.edu.au>  Thu, 20 Jul 2017 23:00:00 +1000
+
+network-manager-l2tp (1.2.6-2) unstable; urgency=medium
+
+  * Drop obsolete Build-Depends on libdbus-glib-1-dev.
+    It is no longer required after the port to GDBus
+  * Drop redundant Build-Depends on dh-autoreconf and --with autoreconf
+    They are enabled by default with compat level 10
+  * Drop unnecessary Breaks and Replaces network-manager-l2tp-gnome (<< 1.2.4)
+  * Added missing LGPL-2+ and CC0-1.0 to copyright file
+
+ -- Douglas Kosovic <doug@uq.edu.au>  Thu, 01 Jun 2017 23:23:10 +1000
+
+network-manager-l2tp (1.2.6-1) unstable; urgency=medium
+
+  * initial release
+
+ -- Douglas Kosovic <doug@uq.edu.au>  Sun, 21 May 2017 18:15:00 +1000

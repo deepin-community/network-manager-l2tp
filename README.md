@@ -1,4 +1,4 @@
-# NetworkMananger-l2tp
+# NetworkManager-l2tp
 
 NetworkManager-l2tp is a VPN plugin for NetworkManager 1.20 and later which
 provides support for L2TP and L2TP/IPsec (i.e. L2TP over IPsec) connections.
@@ -6,14 +6,14 @@ provides support for L2TP and L2TP/IPsec (i.e. L2TP over IPsec) connections.
 For L2TP support, it uses either of the following :
 * kl2tpd from Katalix's go-l2tp project
   ( https://github.com/katalix/go-l2tp )
-* xl2tpd ( https://www.xelerance.com/software/xl2tpd/ )
+* xl2tpd ( https://github.com/xelerance/xl2tpd )
 
 For IPsec support, it uses either of the following :
 * Libreswan ( https://libreswan.org )
 * strongSwan ( https://www.strongswan.org )
 
 For user authentication it supports either:
-* username/pasword credentials.
+* username/password credentials.
 * TLS certificates.
 
 For machine authentication it supports either:
@@ -29,45 +29,9 @@ The configure script will attempt to determine if pppd EAP-TLS support is
 available and will disable the build time TLS user certificate support if it
 can not be detected.
 
-This VPN plugin auto detects the following TLS certificate and private key file
-formats by looking at the file contents and not the file extension :
-* PKCS#12 certificates.
-* X509 certificates (PEM or DER).
-* PKCS#8 private keys (PEM or DER)
-* traditional OpenSSL RSA, DSA and ECDSA private keys (PEM or DER).
-
 For details on pre-built packages, known issues and build dependencies,
 please visit the Wiki :
 * https://github.com/nm-l2tp/NetworkManager-l2tp/wiki
-
-## Table of Contents
-
-- [Building](#building)
-    - [Debian 10 and Ubuntu 20.04](#debian-10-and-ubuntu-2004-amd64-ie-x86-64)
-    - [Fedora 35](#fedora-35-x86-64)
-    - [Red Hat Enterprise Linux 8](#red-hat-enterprise-linux-8-x86-64)
-    - [openSUSE Tumbleweed](#opensuse-tumbleweed-x86-64)
-- [VPN connection profile files](#vpn-connection-profile-files)
-- [Run-time generated files](#run-time-generated-files)
-- [Password protecting the libreswan NSS database](#password-protecting-the-libreswan-nss-database)
-- [Debugging](#debugging)
-  - [Increase Debugging Output](#increase-debugging-output)
-    - [Debian and Ubuntu](#debian-and-ubuntu)
-    - [Fedora and Red Hat Enterprise Linux](#fedora-and-red-hat-enterprise-linux)
-    - [openSUSE](#opensuse)
-  - [Libreswan Custom Debugging](#libreswan-custom-debugging)
-    - [Debian and Ubuntu](#debian-and-ubuntu-1)
-    - [Fedora and Red Hat Enterprise Linux](#fedora-and-red-hat-enterprise-linux-1)
-    - [openSUSE](#opensuse-1)
-  - [strongSwan Custom Debugging](#strongswan-custom-debugging)
-    - [Debian and Ubuntu](#debian-and-ubuntu-2)
-    - [Fedora and Red Hat Enterprise Linux](#fedora-and-red-hat-enterprise-linux-2)
-    - [openSUSE](#opensuse-2)
-- [Issue with blacklisting of L2TP kernel modules](#issue-with-blacklisting-of-l2tp-kernel-modules)
-- [L2TP connection issues with UDP source port 1701](#l2tp-connection-issues-with-udp-source-port-1701)
-  - [Unable to establish L2TP connection without UDP source port 1701](#unable-to-establish-l2tp-connection-without-udp-source-port-1701)
-  - [Unable to establish L2TP connection with UDP source port 1701](#unable-to-establish-l2tp-connection-with-udp-source-port-1701)
-- [IPsec IKEv1 weak legacy algorithms and backwards compatibility](#ipsec-ikev1-weak-legacy-algorithms-and-backwards-compatibility)
 
 ## Building
 
@@ -76,31 +40,38 @@ please visit the Wiki :
     make
 
 The default ./configure settings aren't reasonable and should be explicitly
-overridden with ./configure arguments. In the configure examples below, for
-your needs, you may need to change the `--with-pppd-plugin-dir` value to an
-appropriate directory that exists, similarly `--with-nm-ipsec-nss-dir` may
+overridden with ./configure arguments. In the configure examples below, if you
+have pppd < 2.5.0 you may need to use `--with-pppd-plugin-dir` and set it to
+an appropriate directory that exists, similarly `--with-nm-ipsec-nss-dir` may
 need to be set to the Libreswan NSS database location if it is not located in
 `/var/lib/ipsec/nss`. The `--enable-libreswan-dh2` switch can be used with
 libreswan < 3.30 or libreswan packages built with `USE_DH2=true` i.e. have
 modp1024 support.
 
-#### Debian 10 and Ubuntu 20.04 (AMD64, i.e. x86-64)
+#### Debian 13 and Ubuntu 24.04 (AMD64, i.e. x86-64)
+
+    ./configure \
+      --disable-static --prefix=/usr \
+      --sysconfdir=/etc --libdir=/usr/lib/x86_64-linux-gnu \
+      --runstatedir=/run \
+      --with-gtk4
+
+#### Debian 12 and Ubuntu 22.04 (AMD64, i.e. x86-64)
 
     ./configure \
       --disable-static --prefix=/usr \
       --sysconfdir=/etc --libdir=/usr/lib/x86_64-linux-gnu \
       --libexecdir=/usr/lib/NetworkManager \
       --runstatedir=/run \
-      --enable-libreswan-dh2 \
-      --with-pppd-plugin-dir=/usr/lib/pppd/2.4.7
+      --with-pppd-plugin-dir=/usr/lib/pppd/2.4.9
 
-#### Fedora 35 (x86-64)
+#### Fedora 39 and later (x86-64)
 
     ./configure \
       --disable-static --prefix=/usr \
       --sysconfdir=/etc --libdir=/usr/lib64 \
-      --localstatedir=/var \
-      --with-pppd-plugin-dir=/usr/lib64/pppd/2.4.9
+      --runstatedir=/run \
+      --with-gtk4
 
 #### Red Hat Enterprise Linux 8 (x86-64)
 
@@ -120,12 +91,14 @@ modp1024 support.
       --libexecdir=/usr/lib \
       --localstatedir=/var \
       --enable-libreswan-dh2 \
-      --with-pppd-plugin-dir=/usr/lib64/pppd/2.4.9
+      --with-gtk4
 
 ## VPN connection profile files
 
-VPN connection profile files (along with other NetworkManager profile files)
-are stored under `/etc/NetworkManager/system-connections/`
+VPN connection profile files will be one of the following, with the latter
+used when Netplan integration is enabled in NetworkManager:
+- /etc/NetworkManager/system-connections/*.nmconnection
+- /etc/netplan/90-NM-*.yaml
 
 ## Run-time generated files
 
@@ -155,7 +128,6 @@ libreswan >= 4.0 default NSS database location is `/var/lib/ipsec/nss/` and
 for all versions of libreswan on Debian/Ubuntu. Older libreswan versions often
 use `/etc/ipsec.d/` such as on older version of RHEL/Fedora/CentOS.
 
-
 The default libreswan package install for most Linux distributions uses an
 empty password. It is up to the administrator to decide on whether to use a
 password or not. However, a non-empty database password must be provided when
@@ -171,13 +143,7 @@ password is stored:
 For Systemd based Linux distributions logging goes to the Systemd journal
 which can be viewed by issuing the following :
 
-    journalctl --no-hostname _SYSTEMD_UNIT=NetworkManager.service + SYSLOG_IDENTIFIER=pppd
-
-if using go-l2tp's kl2tpd, it is recommended to issue the following :
-
-    journalctl --no-hostname _SYSTEMD_UNIT=NetworkManager.service + _COMM=kl2tpd + SYSLOG_IDENTIFIER=pppd
-
-For some versions of Fedora, libreswan logging also goes to `/var/log/pluto.log`.
+    journalctl --no-hostname _COMM=nm-l2tp-service _COMM=ipsec _COMM=pluto _COMM=charon _COMM=kl2tpd _COMM=xl2tpd _COMM=pppd
 
 For non-Systemd based Linux distributions, view the appropriate system log
 file which is most likely located under `/var/log/`.
@@ -188,11 +154,11 @@ To increase debugging output, issue the following on the command line, it
 will also prevent the run-time generated config files from being deleted after
 the VPN connection is disconnected :
 
-#### Debian and Ubuntu
+#### Debian < 13 and Ubuntu < 24.04
     sudo killall -TERM nm-l2tp-service
     sudo /usr/lib/NetworkManager/nm-l2tp-service --debug
 
-#### Fedora and Red Hat Enterprise Linux
+#### Debian, Ubuntu, Fedora and Red Hat Enterprise Linux
     sudo killall -TERM nm-l2tp-service
     sudo /usr/libexec/nm-l2tp-service --debug
 
@@ -210,7 +176,7 @@ issue the following to see more log output:
 
 ### Libreswan Custom Debugging
 
-The Libreswan debugging can be cutomized by setting the `PLUTODEBUG` env
+The Libreswan debugging can be customized by setting the `PLUTODEBUG` env
 variable which corresponds to the `plutodebug` ipsec.conf config section option.
 The syntax for `PLUTODEBUG` is a white-space separated list of the following
 format :
@@ -224,10 +190,10 @@ the command-line :
 
 *Examples:*
 
-#### Debian and Ubuntu
+#### Debian < 13 and Ubuntu < 24.04
     sudo PLUTODEBUG="all proposal-parser" /usr/lib/NetworkManager/nm-l2tp-service --debug
 
-#### Fedora and Red Hat Enterprise Linux
+#### Debian, Ubuntu, Fedora and Red Hat Enterprise Linux
     sudo PLUTODEBUG="all proposal-parser" /usr/libexec/nm-l2tp-service --debug
 
 #### openSUSE
@@ -248,14 +214,27 @@ and LEVEL is: -1|0|1|2|3|4
 
 *Examples:*
 
-#### Debian and Ubuntu
+#### Debian < 13 and Ubuntu < 24.04
     sudo CHARONDEBUG="knl 1, ike 2, esp 2, lib 1, cfg 3" /usr/lib/NetworkManager/nm-l2tp-service --debug
 
-#### Fedora and Red Hat Enterprise Linux
+#### Debian, Ubuntu, Fedora and Red Hat Enterprise Linux
     sudo CHARONDEBUG="knl 1, ike 2, esp 2, lib 1, cfg 3" /usr/libexec/nm-l2tp-service --debug
 
 #### openSUSE
     sudo CHARONDEBUG="knl 1, ike 2, esp 2, lib 1, cfg 3" /usr/lib/nm-l2tp-service --debug
+
+## Libreswan no longer supports IKEv1 packets by default
+
+Libreswan 5.0 and later, along with earlier versions of Libreswan on some
+Linux distros, no longer support IKEv1 packets by default, the following
+error occurs if this is the case :
+
+```
+failed to add IKEv1 connection: global ikev1-policy does not allow IKEv1 connections
+```
+
+To re-enable IKEv1, uncomment or add `ikev1-policy=accept` to the
+`config setup` section of `/etc/ipsec.conf`
 
 ## Issue with blacklisting of L2TP kernel modules
 

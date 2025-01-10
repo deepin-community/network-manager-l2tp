@@ -10,7 +10,7 @@
  * (C) Copyright 2011 Geo Carncross <geocar@gmail.com>
  * (C) Copyright 2012 Sergey Prokhorov <me@seriyps.ru>
  * (C) Copyright 2014 Nathan Dorfman <ndorf@rtfm.net>
- * (C) Copyright 2016 - 2020 Douglas Kosovic <doug@uq.edu.au>
+ * (C) Copyright 2016 - 2024 Douglas Kosovic <doug@uq.edu.au>
  */
 
 #include "nm-default.h"
@@ -36,7 +36,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 
-#include "nm-ppp-status.h"
+#include "nm-l2tp-pppd-status.h"
 #include "nm-l2tp-pppd-service-dbus.h"
 #include "nm-utils/nm-shared-utils.h"
 #include "nm-utils/nm-secret-utils.h"
@@ -70,6 +70,7 @@ typedef enum { PASSWORD_AUTH, TLS_AUTH, PSK_AUTH } NML2tpAuthType;
 typedef struct {
     GPid              pid_l2tpd;
     gboolean          ipsec_up;
+    gboolean          libreswan_5_or_later;
     guint32           ppp_timeout_handler;
     NMConnection *    connection;
     NMDBusL2tpPpp *   dbus_skeleton;
@@ -83,14 +84,17 @@ typedef struct {
     /* IP of L2TP gateway in numeric and string format */
     guint32 naddr;
     char *  saddr;
+
+    /* Local IP route to the L2TP gateway */
+    char *  slocaladdr;
 } NML2tpPluginPrivate;
 
 #define NM_L2TP_PLUGIN_GET_PRIVATE(o) \
     (G_TYPE_INSTANCE_GET_PRIVATE((o), NM_TYPE_L2TP_PLUGIN, NML2tpPluginPrivate))
 
 #define NM_L2TP_PPPD_PLUGIN       PLUGINDIR "/nm-l2tp-pppd-plugin.so"
-#define NM_L2TP_WAIT_IPSEC        10000 /* 10 seconds */
-#define NM_L2TP_WAIT_PPPD         14000 /* 14 seconds */
+#define NM_L2TP_WAIT_IPSEC        16000 /* 16 seconds */
+#define NM_L2TP_WAIT_PPPD         16000 /* 16 seconds */
 #define L2TP_SERVICE_SECRET_TRIES "l2tp-service-secret-tries"
 
 /* Default Phase 1 (Main Mode) and Phase 2 (Quick Mode) proposals which are a
@@ -315,7 +319,7 @@ validate_one_property(const char *key, const char *value, gpointer user_data)
                         NM_VPN_PLUGIN_ERROR_BAD_ARGUMENTS,
                         _("invalid integer property '%s'"),
                         key);
-            break;
+            return;
         case G_TYPE_BOOLEAN:
             if (nm_streq(value, "yes") || nm_streq(value, "no"))
                 return; /* valid */
@@ -325,7 +329,7 @@ validate_one_property(const char *key, const char *value, gpointer user_data)
                         NM_VPN_PLUGIN_ERROR_BAD_ARGUMENTS,
                         _("invalid boolean property '%s' (not yes or no)"),
                         key);
-            break;
+            return;
         default:
             g_set_error(info->error,
                         NM_VPN_PLUGIN_ERROR,
@@ -333,7 +337,7 @@ validate_one_property(const char *key, const char *value, gpointer user_data)
                         _("unhandled property '%s' type %s"),
                         key,
                         g_type_name(prop.type));
-            break;
+            return;
         }
     }
 
@@ -589,9 +593,10 @@ nm_l2tp_config_write(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
     const char *           value;
     char *                 filename;
     g_autofree char *      friendly_name = NULL;
-    g_autofree char *      rundir;
+    g_autofree char *      rundir = NULL;
     char                   errorbuf[128];
     gint                   fd = -1;
+    gint64                 max_retries;
     FILE *                 fp;
     struct in_addr         naddr;
     int                    port;
@@ -599,6 +604,7 @@ nm_l2tp_config_write(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
     gboolean               use_ephemeral_port;
     gboolean               use_ikev2;
     gboolean               tls_need_password;
+    gboolean               is_local_set          = FALSE;
     g_autofree char *      pwd_base64            = NULL;
     const char *           tls_key_filename      = NULL;
     const char *           tls_cert_filename     = NULL;
@@ -640,7 +646,7 @@ nm_l2tp_config_write(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
         }
     }
 
-    /* Map depricated Gateway ID to Remote ID */
+    /* Map deprecated Gateway ID to Remote ID */
     value = nm_setting_vpn_get_data_item(s_vpn, NM_L2TP_KEY_IPSEC_GATEWAY_ID);
     if (value) {
         nm_setting_vpn_add_data_item(s_vpn, NM_L2TP_KEY_IPSEC_REMOTE_ID, value);
@@ -664,7 +670,6 @@ nm_l2tp_config_write(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
     value = nm_setting_vpn_get_data_item(s_vpn, NM_L2TP_KEY_USER_AUTH_TYPE);
     if (nm_streq0(value, NM_L2TP_AUTHTYPE_TLS)) {
         priv->user_authtype = TLS_AUTH;
-        crypto_init_openssl();
     }
 
     /**
@@ -679,7 +684,6 @@ nm_l2tp_config_write(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
             tls_key_filename  = nm_setting_vpn_get_data_item(s_vpn, NM_L2TP_KEY_MACHINE_KEY);
             tls_cert_filename = nm_setting_vpn_get_data_item(s_vpn, NM_L2TP_KEY_MACHINE_CERT);
             tls_ca_filename   = nm_setting_vpn_get_data_item(s_vpn, NM_L2TP_KEY_MACHINE_CA);
-            crypto_init_openssl();
         }
 
         if (priv->ipsec_daemon == NM_L2TP_IPSEC_DAEMON_STRONGSWAN
@@ -701,7 +705,6 @@ nm_l2tp_config_write(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
                     if (!has_include_ipsec_secrets(ipsec_secrets_file)) {
                         fd = open(ipsec_secrets_file, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
                         if (fd == -1) {
-                            crypto_deinit_openssl();
                             errsv = errno;
                             snprintf(errorbuf,
                                      sizeof(errorbuf),
@@ -712,7 +715,6 @@ nm_l2tp_config_write(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
                         }
                         fp = fdopen(fd, "a");
                         if (fp == NULL) {
-                            crypto_deinit_openssl();
                             snprintf(errorbuf,
                                      sizeof(errorbuf),
                                      _("Could not append \"include ipsec.d/ipsec.nm-l2tp.secrets\" "
@@ -735,7 +737,6 @@ nm_l2tp_config_write(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
                          sizeof(errorbuf),
                          _("Could not write %s/ipsec.nm-l2tp.secrets"),
                          ipsec_conf_dir);
-                crypto_deinit_openssl();
                 return nm_l2tp_ipsec_error(error, errorbuf);
             }
 
@@ -770,14 +771,12 @@ nm_l2tp_config_write(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
             } else { /* TLS_AUTH */
                 if (!tls_key_filename) {
                     close(fd);
-                    crypto_deinit_openssl();
                     return nm_l2tp_ipsec_error(error, _("Machine private key file not supplied"));
                 }
                 tls_key_fileformat =
                     crypto_file_format(tls_key_filename, &tls_need_password, &config_error);
                 if (config_error) {
                     close(fd);
-                    crypto_deinit_openssl();
                     g_propagate_error(error, config_error);
                     return FALSE;
                 }
@@ -790,23 +789,6 @@ nm_l2tp_config_write(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
                 case NM_L2TP_CRYPTO_FILE_FORMAT_PKCS8_DER:
                 case NM_L2TP_CRYPTO_FILE_FORMAT_PKCS8_PEM:
                     write_config_option(fd, ": PKCS8");
-                    break;
-
-                case NM_L2TP_CRYPTO_FILE_FORMAT_RSA_PKEY_DER:
-                case NM_L2TP_CRYPTO_FILE_FORMAT_RSA_PKEY_PEM:
-                    write_config_option(fd, ": RSA");
-                    break;
-
-                case NM_L2TP_CRYPTO_FILE_FORMAT_DSA_PKEY_DER:
-                case NM_L2TP_CRYPTO_FILE_FORMAT_DSA_PKEY_PEM:
-                    /* strongSwan no longer supports DSA,
-                       we let strongSwan produce an error message */
-                    write_config_option(fd, ": DSA");
-                    break;
-
-                case NM_L2TP_CRYPTO_FILE_FORMAT_ECDSA_PKEY_DER:
-                case NM_L2TP_CRYPTO_FILE_FORMAT_ECDSA_PKEY_PEM:
-                    write_config_option(fd, ": ECDSA");
                     break;
 
                 default:
@@ -835,7 +817,6 @@ nm_l2tp_config_write(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
             crypto_init_nss(NM_IPSEC_NSS_DIR, &config_error);
             if (config_error) {
                 close(fd);
-                crypto_deinit_openssl();
                 g_propagate_error(error, config_error);
                 return FALSE;
             }
@@ -843,7 +824,6 @@ nm_l2tp_config_write(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
             if (config_error) {
                 close(fd);
                 crypto_deinit_nss(NULL);
-                crypto_deinit_openssl();
                 g_propagate_error(error, config_error);
                 return FALSE;
             }
@@ -865,7 +845,6 @@ nm_l2tp_config_write(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
             }
             if (config_error) {
                 crypto_deinit_nss(NULL);
-                crypto_deinit_openssl();
                 g_propagate_error(error, config_error);
                 return FALSE;
             }
@@ -873,7 +852,6 @@ nm_l2tp_config_write(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
             g_byte_array_free(p12_array, TRUE);
             if (config_error) {
                 crypto_deinit_nss(NULL);
-                crypto_deinit_openssl();
                 g_propagate_error(error, config_error);
                 return FALSE;
             }
@@ -887,7 +865,6 @@ nm_l2tp_config_write(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
         fd       = open(filename, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
         g_free(filename);
         if (fd == -1) {
-            crypto_deinit_openssl();
             return nm_l2tp_ipsec_error(error, _("Could not write ipsec config"));
         }
 
@@ -915,7 +892,6 @@ nm_l2tp_config_write(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
                 tls_ca_fileformat = crypto_file_format(tls_ca_filename, NULL, &config_error);
                 if (config_error) {
                     close(fd);
-                    crypto_deinit_openssl();
                     g_propagate_error(error, config_error);
                     return FALSE;
                 }
@@ -945,10 +921,12 @@ nm_l2tp_config_write(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
             write_config_option(fd, "  authby=secret\n");
         }
 
-        write_config_option(fd, "  left=%%defaultroute\n");
-        if (use_ephemeral_port) {
-            write_config_option(fd, "  leftprotoport=udp/%%any\n");
+        if (priv->slocaladdr) {
+            write_config_option(fd, "  left=%s\n", priv->slocaladdr);
         } else {
+            write_config_option(fd, "  left=%%defaultroute\n");
+        }
+        if (!use_ephemeral_port) {
             write_config_option(fd, "  leftprotoport=udp/l2tp\n");
         }
         if (priv->ipsec_daemon == NM_L2TP_IPSEC_DAEMON_LIBRESWAN
@@ -966,7 +944,6 @@ nm_l2tp_config_write(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
                     &config_error);
                 if (config_error) {
                     close(fd);
-                    crypto_deinit_openssl();
                     g_propagate_error(error, config_error);
                     return FALSE;
                 }
@@ -980,7 +957,6 @@ nm_l2tp_config_write(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
             } else {
                 if (!tls_key_filename) {
                     close(fd);
-                    crypto_deinit_openssl();
                     return nm_l2tp_ipsec_error(error, _("Machine certificate file not supplied"));
                 }
                 write_config_option(fd, "  leftcert=\"%s\"\n", tls_cert_filename);
@@ -1000,7 +976,9 @@ nm_l2tp_config_write(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
             write_config_option(fd, "  rightrsasigkey=%%cert\n");
         }
 
-        write_config_option(fd, "  keyingtries=%%forever\n");
+        if (!priv->libreswan_5_or_later) {
+            write_config_option(fd, "  keyingtries=%%forever\n");
+        }
 
         use_ikev2 = FALSE;
         value     = nm_setting_vpn_get_data_item(s_vpn, NM_L2TP_KEY_IPSEC_IKEV2);
@@ -1056,13 +1034,13 @@ nm_l2tp_config_write(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
             write_config_option(fd, "  compress=%s\n", value);
 
         if (use_ikev2) {
-            if (priv->ipsec_daemon == NM_L2TP_IPSEC_DAEMON_LIBRESWAN) {
+            if (priv->ipsec_daemon == NM_L2TP_IPSEC_DAEMON_LIBRESWAN && !priv->libreswan_5_or_later) {
                 write_config_option(fd, "  ikev2=yes\n");
             } else {
                 write_config_option(fd, "  keyexchange=ikev2\n");
             }
         } else {
-            if (priv->ipsec_daemon == NM_L2TP_IPSEC_DAEMON_LIBRESWAN) {
+            if (priv->ipsec_daemon == NM_L2TP_IPSEC_DAEMON_LIBRESWAN && !priv->libreswan_5_or_later) {
                 write_config_option(fd, "  ikev2=no\n");
             } else {
                 write_config_option(fd, "  keyexchange=ikev1\n");
@@ -1094,7 +1072,6 @@ nm_l2tp_config_write(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
         g_free(filename);
 
         if (fd == -1) {
-            crypto_deinit_openssl();
             return nm_l2tp_ipsec_error(error, _("Could not write kl2tpd config."));
         }
 
@@ -1114,7 +1091,6 @@ nm_l2tp_config_write(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
         g_free(filename);
 
         if (fd == -1) {
-            crypto_deinit_openssl();
             return nm_l2tp_ipsec_error(error, _("Could not write xl2tpd config."));
         }
 
@@ -1122,6 +1098,10 @@ nm_l2tp_config_write(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
         write_config_option(fd, "access control = yes\n");
 
         write_config_option(fd, "port = %d\n", port);
+        if (getenv("NM_L2TP_XL2TPD_MAX_RETRIES")) {
+            max_retries = strtol(getenv("NM_L2TP_XL2TPD_MAX_RETRIES"), NULL, 10);
+            write_config_option(fd, "max retries = %ld\n", max_retries);
+        }
         if (_LOGD_enabled()) {
             /* write_config_option (fd, "debug network = yes\n"); */
             write_config_option(fd, "debug state = yes\n");
@@ -1152,7 +1132,6 @@ nm_l2tp_config_write(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
     g_free(filename);
 
     if (fd == -1) {
-        crypto_deinit_openssl();
         return nm_l2tp_ipsec_error(error, _("Could not write ppp options."));
     }
 
@@ -1161,19 +1140,59 @@ nm_l2tp_config_write(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
 
     write_config_option(fd, "ipparam nm-l2tp-service-%s\n", priv->uuid);
 
-    /* pass gateway IP address to nm-l2tp-pppd-plugin via ipcp_wantoptions[0].hisaddr,
-       but let pppd use the remote IP address being offered by the peer using IPCP */
-    write_config_option(fd, ":%s\n", priv->saddr);
-    write_config_option(fd, "ipcp-accept-remote\n");
-
     write_config_option(fd, "nodetach\n");
 
+    /* Any IPv4 configuration options */
     s_ip4 = nm_connection_get_setting_ip4_config(priv->connection);
-    if (!nm_setting_ip_config_get_ignore_auto_dns(s_ip4)) {
-        write_config_option(fd, "usepeerdns\n");
+    if (s_ip4) {
+
+        value = nm_setting_ip_config_get_method (s_ip4);
+        if (nm_streq0(value, NM_SETTING_IP4_CONFIG_METHOD_MANUAL)) {
+            const char *ipv4_str = NULL;
+            const char *gway_str = NULL;
+            const char *mask_str = NULL;
+            char buf[NM_UTILS_INET_ADDRSTRLEN];
+            NMIPAddress *ipv4 = NULL;
+
+            /* If <local:remote> is specified, the IPCP negotiation will fail unless
+             *   - ipcp-accept-local, and/or
+             *   - ipcp-accept-remote
+             * is specified. That depends on the server, but in any case allow it.
+             *
+             * The "manual" option is really just a suggestion. "auto" is the default.
+             */
+            ipv4 = nm_setting_ip_config_get_address(s_ip4, 0);
+            if (ipv4) {
+                int prefix = nm_ip_address_get_prefix(ipv4);
+                ipv4_str = nm_ip_address_get_address(ipv4);
+                mask_str = nm_utils_inet4_ntop(nm_utils_ip4_prefix_to_netmask(prefix), buf);
+
+                gway_str = nm_setting_ip_config_get_gateway(s_ip4);
+                if (ipv4_str && gway_str) {
+                    write_config_option(fd, "%s:%s\n", ipv4_str, gway_str);
+                    if (mask_str) {
+                        write_config_option(fd, "netmask %s\n", mask_str);
+                    }
+                    write_config_option(fd, "ipcp-accept-local\n");
+                    write_config_option(fd, "ipcp-accept-remote\n");
+                    is_local_set = TRUE;
+                }
+            }
+        }
+        if (nm_streq (value, NM_SETTING_IP4_CONFIG_METHOD_DISABLED)) {
+            write_config_option(fd, "noip\n");
+        } else {
+            if (!nm_setting_ip_config_get_ignore_auto_dns(s_ip4)) {
+                write_config_option(fd, "usepeerdns\n");
+            }
+        }
     }
 
-    write_config_option(fd, "noipdefault\n");
+    if (!is_local_set) {
+        write_config_option(fd, "noipdefault\n");
+    }
+    is_local_set = FALSE;
+
     write_config_option(fd, "nodefaultroute\n");
 
     /* Don't need to auth the L2TP server */
@@ -1185,9 +1204,15 @@ nm_l2tp_config_write(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
         write_config_option(fd, "mrru %s\n", value);
     }
 
-    /* pppd and xl2tpd on Linux require this option to support Android and iOS clients,
-       and pppd on Linux clients won't work without the same option */
-    write_config_option(fd, "noccp\n");
+    if (!nm_setting_vpn_get_data_item(s_vpn, NM_L2TP_KEY_REQUIRE_MPPE) &&
+        !nm_setting_vpn_get_data_item(s_vpn, NM_L2TP_KEY_REQUIRE_MPPE_40) &&
+        !nm_setting_vpn_get_data_item(s_vpn, NM_L2TP_KEY_REQUIRE_MPPE_128)) {
+
+        /* pppd and xl2tpd on Linux servers require noccp option to support Android and iOS clients,
+           so conversely to improve compatibility for Linux clients, we'll also use noccp, except when
+           using MPPE, as negotiations of MPPE happens within the Compression Control Protocol (CCP) */
+        write_config_option(fd, "noccp\n");
+    }
 
     if (priv->user_authtype == TLS_AUTH) {
         /* EAP-TLS patch for pppd only supports PEM keys & certs, so do conversion if necessary */
@@ -1199,7 +1224,6 @@ nm_l2tp_config_write(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
         tls_key_fileformat = crypto_file_format(tls_key_filename, &tls_need_password, error);
         if (*error) {
             close(fd);
-            crypto_deinit_openssl();
             return FALSE;
         }
         if (tls_need_password)
@@ -1222,19 +1246,14 @@ nm_l2tp_config_write(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
                                        error);
             if (*error) {
                 close(fd);
-                crypto_deinit_openssl();
                 return FALSE;
             }
         } else {
             switch (tls_key_fileformat) {
             case NM_L2TP_CRYPTO_FILE_FORMAT_PKCS8_DER:
-            case NM_L2TP_CRYPTO_FILE_FORMAT_RSA_PKEY_DER:
-            case NM_L2TP_CRYPTO_FILE_FORMAT_DSA_PKEY_DER:
-            case NM_L2TP_CRYPTO_FILE_FORMAT_ECDSA_PKEY_DER:
                 crypto_pkey_der_to_pem_file(tls_key_filename, value, tls_key_out_filename, error);
                 if (*error) {
                     close(fd);
-                    crypto_deinit_openssl();
                     return FALSE;
                 }
                 break;
@@ -1247,14 +1266,12 @@ nm_l2tp_config_write(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
             tls_cert_fileformat = crypto_file_format(tls_cert_filename, NULL, error);
             if (*error) {
                 close(fd);
-                crypto_deinit_openssl();
                 return FALSE;
             }
             if (tls_cert_fileformat == NM_L2TP_CRYPTO_FILE_FORMAT_X509_DER) {
                 crypto_x509_der_to_pem_file(tls_cert_filename, tls_cert_out_filename, error);
                 if (*error) {
                     close(fd);
-                    crypto_deinit_openssl();
                     return FALSE;
                 }
             } else {
@@ -1266,14 +1283,12 @@ nm_l2tp_config_write(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
                 tls_ca_fileformat = crypto_file_format(tls_ca_filename, NULL, error);
                 if (*error) {
                     close(fd);
-                    crypto_deinit_openssl();
                     return FALSE;
                 }
                 if (tls_ca_fileformat == NM_L2TP_CRYPTO_FILE_FORMAT_X509_DER) {
                     crypto_x509_der_to_pem_file(tls_ca_filename, tls_ca_out_filename, error);
                     if (*error) {
                         close(fd);
-                        crypto_deinit_openssl();
                         return FALSE;
                     }
                 } else {
@@ -1315,8 +1330,8 @@ nm_l2tp_config_write(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
         value = nm_setting_vpn_get_data_item(s_vpn, NM_L2TP_KEY_USER);
         if (!value || !*value)
             value = nm_setting_vpn_get_user_name(s_vpn);
-        if (!value || !*value) {
-            write_config_option(fd, "name %s\n", value);
+        if (value && *value) {
+            write_config_option(fd, "user \"%s\"\n", value);
         }
         for (int i = 0; ppp_auth_options[i].name; i++) {
             value = nm_setting_vpn_get_data_item(s_vpn, ppp_auth_options[i].name);
@@ -1376,7 +1391,6 @@ nm_l2tp_config_write(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
     }
 
     close(fd);
-    crypto_deinit_openssl();
     return TRUE;
 }
 
@@ -1431,38 +1445,43 @@ nm_l2tp_start_ipsec(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
     pid_t                wpid;
 
     if (priv->ipsec_daemon == NM_L2TP_IPSEC_DAEMON_LIBRESWAN) {
-        snprintf(cmdbuf, sizeof(cmdbuf), "%s auto --status > /dev/null", priv->ipsec_binary_path);
+        snprintf(cmdbuf, sizeof(cmdbuf), "%s status > /dev/null 2>&1", priv->ipsec_binary_path);
+        g_message("%s", cmdbuf);
         sys = system(cmdbuf);
-        if (sys == 1) {
+        if (sys == 8448) {
             snprintf(cmdbuf, sizeof(cmdbuf), "%s start", priv->ipsec_binary_path);
+            g_message("%s", cmdbuf);
             sys = system(cmdbuf);
             if (sys) {
                 return nm_l2tp_ipsec_error(error, _("Could not start the ipsec service."));
             }
         } else {
             snprintf(cmdbuf, sizeof(cmdbuf), "%s restart", priv->ipsec_binary_path);
+            g_message("%s", cmdbuf);
             sys = system(cmdbuf);
             if (sys) {
                 return nm_l2tp_ipsec_error(error, _("Could not restart the ipsec service."));
             }
         }
         /* wait for Libreswan to get ready before performing an up operation */
-        snprintf(cmdbuf, sizeof(cmdbuf), "%s auto --ready", priv->ipsec_binary_path);
+        snprintf(cmdbuf, sizeof(cmdbuf), "%s status > /dev/null 2>&1", priv->ipsec_binary_path);
         sys = system(cmdbuf);
         for (retry = 0; retry < 5 && sys != 0; retry++) {
             sleep(1);
             sys = system(cmdbuf);
         }
-    } else {
-        snprintf(cmdbuf, sizeof(cmdbuf), "%s status > /dev/null", priv->ipsec_binary_path);
+    } else { /* strongswan */
+        snprintf(cmdbuf, sizeof(cmdbuf), "%s status > /dev/null 2>&1", priv->ipsec_binary_path);
+        g_message("%s", cmdbuf);
         sys = system(cmdbuf);
-        if (sys == 3) {
+        if (sys == 768) {
             snprintf(cmdbuf,
                      sizeof(cmdbuf),
                      "%s start "
                      " --conf " RUNSTATEDIR "/nm-l2tp-%s/ipsec.conf --debug",
                      priv->ipsec_binary_path,
                      priv->uuid);
+            g_message("%s", cmdbuf);
             sys = system(cmdbuf);
             if (sys) {
                 return nm_l2tp_ipsec_error(error, _("Could not start the ipsec service."));
@@ -1474,6 +1493,7 @@ nm_l2tp_start_ipsec(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
                      " --conf " RUNSTATEDIR "/nm-l2tp-%s/ipsec.conf --debug",
                      priv->ipsec_binary_path,
                      priv->uuid);
+            g_message("%s", cmdbuf);
             sys = system(cmdbuf);
             if (sys) {
                 return nm_l2tp_ipsec_error(error, _("Could not restart the ipsec service."));
@@ -1486,60 +1506,65 @@ nm_l2tp_start_ipsec(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
             sleep(1);
             sys = system(cmdbuf);
         }
+        sys = 0;
+    }
+
+    if (priv->ipsec_daemon == NM_L2TP_IPSEC_DAEMON_LIBRESWAN) {
+        if (!priv->libreswan_5_or_later) {
+            snprintf(cmdbuf,
+                     sizeof(cmdbuf),
+                     "%s auto"
+                     " --config " RUNSTATEDIR "/nm-l2tp-%s/ipsec.conf --verbose"
+                     " --add '%s'",
+                     priv->ipsec_binary_path,
+                     priv->uuid,
+                     priv->uuid);
+        } else {
+            snprintf(cmdbuf,
+                     sizeof(cmdbuf),
+                     "%s"
+                     " add '%s'"
+                     " --config " RUNSTATEDIR "/nm-l2tp-%s/ipsec.conf --verbose",
+                     priv->ipsec_binary_path,
+                     priv->uuid,
+                     priv->uuid);
+        }
+        g_message("%s", cmdbuf);
+        sys = system(cmdbuf);
+        if (sys) {
+            return nm_l2tp_ipsec_error(error, _("Could not add ipsec connection."));
+        }
     }
 
     /* spawn ipsec script asynchronously as it sometimes doesn't exit */
     pid_ipsec_up = 0;
-    if (priv->ipsec_daemon == NM_L2TP_IPSEC_DAEMON_LIBRESWAN) {
-        snprintf(cmdbuf,
-                 sizeof(cmdbuf),
-                 "%s auto "
-                 " --config " RUNSTATEDIR "/nm-l2tp-%s/ipsec.conf --verbose"
-                 " --add '%s'",
-                 priv->ipsec_binary_path,
-                 priv->uuid,
-                 priv->uuid);
-        sys = system(cmdbuf);
-        if (!sys) {
-            argv[0] = priv->ipsec_binary_path;
-            argv[1] = "auto";
-            argv[2] = "--up";
-            argv[3] = priv->uuid;
-            argv[4] = NULL;
-
-            if (!g_spawn_async(NULL,
-                               argv,
-                               NULL,
-                               G_SPAWN_DO_NOT_REAP_CHILD,
-                               NULL,
-                               NULL,
-                               &pid_ipsec_up,
-                               NULL)) {
-                pid_ipsec_up = 0;
-            } else {
-                if (pid_ipsec_up)
-                    _LOGI("Spawned ipsec auto --up script with PID %d.", pid_ipsec_up);
-            }
-        }
-    } else {
+    if (priv->ipsec_daemon == NM_L2TP_IPSEC_DAEMON_LIBRESWAN && !priv->libreswan_5_or_later) {
+        argv[0] = priv->ipsec_binary_path;
+        argv[1] = "auto";
+        argv[2] = "--up";
+        argv[3] = priv->uuid;
+        argv[4] = NULL;
+        g_message("%s %s %s %s",argv[0], argv[1], argv[2], argv[3]);
+    } else { /* libreswan >= 5.0 and strongswan */
         argv[0] = priv->ipsec_binary_path;
         argv[1] = "up";
         argv[2] = priv->uuid;
         argv[3] = NULL;
-
-        if (!g_spawn_async(NULL,
-                           argv,
-                           NULL,
-                           G_SPAWN_DO_NOT_REAP_CHILD,
-                           NULL,
-                           NULL,
-                           &pid_ipsec_up,
-                           NULL)) {
-            pid_ipsec_up = 0;
-        } else {
-            if (pid_ipsec_up)
-                _LOGI("Spawned ipsec up script with PID %d.", pid_ipsec_up);
-        }
+        argv[4] = NULL;
+        g_message("%s %s %s",argv[0], argv[1], argv[2]);
+    }
+    if (!g_spawn_async(NULL,
+                       argv,
+                       NULL,
+                       G_SPAWN_DO_NOT_REAP_CHILD,
+                       NULL,
+                       NULL,
+                       &pid_ipsec_up,
+                       NULL)) {
+        pid_ipsec_up = 0;
+    } else {
+        if (pid_ipsec_up)
+            _LOGI("Spawned ipsec up script with PID %d.", pid_ipsec_up);
     }
 
     if (pid_ipsec_up > 0) {
@@ -1562,10 +1587,10 @@ nm_l2tp_start_ipsec(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
             if (!WEXITSTATUS(status)) {
                 if (priv->ipsec_daemon == NM_L2TP_IPSEC_DAEMON_LIBRESWAN) {
                     rc = TRUE;
-                    _LOGI("Libreswan IPsec tunnel is up.");
+                    g_message("Libreswan IPsec connection is up.");
                 } else {
                     /* Do not trust exit status of strongSwan 'ipsec up' command.
-                       explictly check if connection is established.
+                       explicitly check if connection is established.
                        strongSwan bug #1449.
                      */
                     snprintf(cmdbuf,
@@ -1574,10 +1599,11 @@ nm_l2tp_start_ipsec(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
                              priv->ipsec_binary_path,
                              priv->uuid);
                     if (g_spawn_command_line_sync(cmdbuf, &output, NULL, NULL, NULL)) {
-                        rc = output && strstr(output, "ESTABLISHED");
+                        rc = output && strstr(output, "ESTABLISHED") &&
+                             strstr(output, "INSTALLED, TRANSPORT");
                         g_free(output);
                         if (rc) {
-                            _LOGI("strongSwan IPsec tunnel is up.");
+                            g_message("strongSwan IPsec connection is up.");
                         }
                     }
                 }
@@ -1590,7 +1616,7 @@ nm_l2tp_start_ipsec(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
             snprintf(cmdbuf, sizeof(cmdbuf), "%s stop", priv->ipsec_binary_path);
             sys = system(cmdbuf);
         }
-        _LOGW("Could not establish IPsec tunnel.");
+        g_message("Could not establish IPsec connection.");
     }
 
     return rc;
@@ -1616,6 +1642,10 @@ nm_l2tp_start_l2tpd_binary(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **e
         g_ptr_array_add(
             l2tpd_argv,
             (gpointer) g_strdup_printf(RUNSTATEDIR "/nm-l2tp-%s/kl2tpd.conf", priv->uuid));
+        g_message("%s %s %s",
+                  (char *) l2tpd_argv->pdata[0],
+                  (char *) l2tpd_argv->pdata[1],
+                  (char *) l2tpd_argv->pdata[2]);
     } else {
         g_ptr_array_add(l2tpd_argv, (gpointer) g_strdup(l2tpd_binary));
         g_ptr_array_add(l2tpd_argv, (gpointer) g_strdup("-D"));
@@ -1631,6 +1661,15 @@ nm_l2tp_start_l2tpd_binary(NML2tpPlugin *plugin, NMSettingVpn *s_vpn, GError **e
         g_ptr_array_add(
             l2tpd_argv,
             (gpointer) g_strdup_printf(RUNSTATEDIR "/nm-l2tp-%s/xl2tpd.pid", priv->uuid));
+        g_message("%s %s %s %s %s %s %s %s",
+                  (char *) l2tpd_argv->pdata[0],
+                  (char *) l2tpd_argv->pdata[1],
+                  (char *) l2tpd_argv->pdata[2],
+                  (char *) l2tpd_argv->pdata[3],
+                  (char *) l2tpd_argv->pdata[4],
+                  (char *) l2tpd_argv->pdata[5],
+                  (char *) l2tpd_argv->pdata[6],
+                  (char *) l2tpd_argv->pdata[7]);
     }
     g_ptr_array_add(l2tpd_argv, NULL);
 
@@ -1697,9 +1736,6 @@ handle_need_secrets(NMDBusL2tpPpp *object, GDBusMethodInvocation *invocation, gp
         switch (tls_key_fileformat) {
         case NM_L2TP_CRYPTO_FILE_FORMAT_PKCS12:
         case NM_L2TP_CRYPTO_FILE_FORMAT_PKCS8_DER:
-        case NM_L2TP_CRYPTO_FILE_FORMAT_RSA_PKEY_DER:
-        case NM_L2TP_CRYPTO_FILE_FORMAT_DSA_PKEY_DER:
-        case NM_L2TP_CRYPTO_FILE_FORMAT_ECDSA_PKEY_DER:
             key_filename = g_strdup_printf(RUNSTATEDIR "/nm-l2tp-%s/key.pem", priv->uuid);
             break;
 
@@ -1804,7 +1840,10 @@ handle_set_ip4_config(NMDBusL2tpPpp *        object,
     /* Insert the external VPN gateway into the table, which the pppd plugin
      * simply doesn't know about.
      */
-    g_variant_builder_add(&builder, "{sv}", NM_L2TP_KEY_GATEWAY, g_variant_new_uint32(priv->naddr));
+    g_variant_builder_add(&builder,
+                          "{sv}",
+                          NM_VPN_PLUGIN_CONFIG_EXT_GATEWAY,
+                          g_variant_new_uint32(priv->naddr));
     new_config = g_variant_builder_end(&builder);
     g_variant_ref_sink(new_config);
 
@@ -1886,6 +1925,42 @@ lookup_gateway(NML2tpPlugin *self, const char *src, GError **error)
 }
 
 static gboolean
+get_localaddr (NML2tpPlugin *self,
+               GError **error)
+{
+    NML2tpPluginPrivate *priv = NM_L2TP_PLUGIN_GET_PRIVATE (self);
+    char abuf[INET_ADDRSTRLEN+1] = {};
+    struct sockaddr_in addr = {};
+    socklen_t alen = sizeof(addr);
+    int fd;
+
+    fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (fd < 0) {
+        return nm_l2tp_ipsec_error(error, _("couldn't determine local IP to contact L2TP VPN gateway"));
+    }
+
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(1701);
+    addr.sin_addr.s_addr = priv->naddr;
+
+    if (0 != connect (fd, &addr, sizeof(addr))) {
+        close (fd);
+        return nm_l2tp_ipsec_error(error, _("unable to connect to L2TP VPN gateway"));
+    }
+
+    memset( &addr, 0, sizeof(addr));
+    if (0 != getsockname( fd, &addr, &alen)) {
+        close (fd);
+        return nm_l2tp_ipsec_error(error, _("failed to get local IP"));
+    }
+
+    priv->slocaladdr = g_strdup (inet_ntop (AF_INET, &addr.sin_addr.s_addr, abuf, alen-1));
+    close(fd);
+
+    return TRUE;
+}
+
+static gboolean
 real_connect(NMVpnServicePlugin *plugin, NMConnection *connection, GError **error)
 {
     NML2tpPluginPrivate *priv = NM_L2TP_PLUGIN_GET_PRIVATE(plugin);
@@ -1919,6 +1994,8 @@ real_connect(NMVpnServicePlugin *plugin, NMConnection *connection, GError **erro
         }
     }
 
+    priv->libreswan_5_or_later = libreswan_5_or_later(priv->ipsec_binary_path);
+
     priv->l2tp_daemon = NM_L2TP_L2TP_DAEMON_UNKNOWN;
     nm_find_l2tpd(&(priv->l2tp_daemon));
 
@@ -1946,6 +2023,9 @@ real_connect(NMVpnServicePlugin *plugin, NMConnection *connection, GError **erro
      */
     if (!lookup_gateway(NM_L2TP_PLUGIN(plugin), gwaddr, error))
         return FALSE;
+
+    if (!get_localaddr(NM_L2TP_PLUGIN (plugin), error))
+        priv->slocaladdr = NULL;
 
     if (!nm_l2tp_properties_validate(s_vpn, error))
         return FALSE;
@@ -2092,6 +2172,10 @@ real_disconnect(NMVpnServicePlugin *plugin, GError **err)
     if (priv->saddr) {
         g_free(priv->saddr);
         priv->saddr = NULL;
+    }
+    if (priv->slocaladdr) {
+        g_free (priv->slocaladdr);
+        priv->slocaladdr = NULL;
     }
 
     if (!gl.debug) {
@@ -2293,12 +2377,14 @@ main(int argc, char *argv[])
 {
     NML2tpPlugin *   plugin;
     GMainLoop *      main_loop;
-    gboolean         persist       = FALSE;
-    GOptionContext * opt_ctx       = NULL;
-    GError *         error         = NULL;
-    g_autofree char *bus_name_free = NULL;
+    gboolean         persist               = FALSE;
+    GOptionContext * opt_ctx               = NULL;
+    GError *         error                 = NULL;
+    g_autofree char *bus_name_free         = NULL;
     const char *     bus_name;
     char             sbuf[30];
+    char *           l2tp_ppp_module[]     = { "/sbin/modprobe", "l2tp_ppp", NULL };
+    char *           l2tp_netlink_module[] = { "/sbin/modprobe", "l2tp_netlink", NULL };
 
     GOptionEntry options[] = {{"persist",
                                0,
@@ -2360,7 +2446,7 @@ main(int argc, char *argv[])
                                                 LOG_DEBUG,
                                                 gl.debug ? LOG_INFO : LOG_NOTICE);
 
-    _LOGD("nm-l2tp-service (version " DIST_VERSION ") starting...");
+    g_message("nm-l2tp-service (version " DIST_VERSION ") starting...");
     _LOGD(" uses%s --bus-name \"%s\"", bus_name_free ? "" : " default", bus_name);
 
     setenv("NM_VPN_LOG_LEVEL", nm_sprintf_buf(sbuf, "%d", gl.log_level), TRUE);
@@ -2375,6 +2461,24 @@ main(int argc, char *argv[])
 
     if (!persist)
         g_signal_connect(plugin, "quit", G_CALLBACK(quit_mainloop), main_loop);
+
+    if (getenv("NM_L2TP_MODPROBE")) {
+        /* Fedora and RHEL have moved the L2TP kernel modules to the
+         * 'kernel-modules-extra' package and blacklisted all modules from
+         * the 'kernel-modules-extra' package by default.
+         * Load the L2TP modules now. Ignore errors.
+         * https://access.redhat.com/articles/3760101
+         */
+        if (!g_spawn_sync(NULL, l2tp_ppp_module, NULL, 0, NULL, NULL, NULL, NULL, NULL, &error)) {
+            _LOGW("modprobing l2tp_ppp failed: %s", error->message);
+            g_error_free(error);
+        }
+
+        if (!g_spawn_sync(NULL, l2tp_netlink_module, NULL, 0, NULL, NULL, NULL, NULL, NULL, &error)) {
+            _LOGW("modprobing l2tp_netlink failed: %s", error->message);
+            g_error_free(error);
+        }
+    }
 
     g_main_loop_run(main_loop);
 

@@ -1,4 +1,135 @@
 ==========================================================
+NetworkManager-l2tp-1.20.20
+Overview of changes since NetworkManager-l2tp-1.20.18
+==========================================================
+
+Changes:
+* ipsec, xl2tpd & kl2tpd command-line debugging output
+  added.
+* Fixes for gcc -Werror=format-security errors.
+* Silence gcc -Wmaybe-uninitialized warning.
+* No longer ignore libreswan failed to add connection
+  errors, such as:
+    global ikev1-policy does not allow IKEv1 connections.
+* Fix for libreswan 5.x deprecation warnings when using
+  libreswan 5.x:
+  - ikev2=no has been replaced by keyexchange=ikev1.
+  - keyingtries=0 ignored, UP connection will attempt
+    to establish until marked DOWN.
+* Merge translations from from NetworkManager-openvpn and
+  NetworkManager-pptp.
+
+==========================================================
+NetworkManager-l2tp-1.20.18
+Overview of changes since NetworkManager-l2tp-1.20.16
+==========================================================
+
+Changes:
+* validation of properties fix.
+* cinnamon-control-center compatibility fix.
+* The starting message for nm-l2tp-service, which includes
+  the version number, is now visible in journalctl output
+  even when not in debug mode.
+* Fix autoconf 2.69 syntax error for configure.ac.
+
+==========================================================
+NetworkManager-l2tp-1.20.16
+Overview of changes since NetworkManager-l2tp-1.20.14
+==========================================================
+
+Changes:
+* Libreswan 4.15 compatibility.
+  Previous Libreswan 5.0 compatibility changes involving
+  "auto" command detection broke with Libreswan 4.15, but
+  not earlier version.
+* Merge translations from KDE Frameworks 6 plasma-nm
+* Merge translations from NetworkManager and libnma
+
+==========================================================
+NetworkManager-l2tp-1.20.14
+Overview of changes since NetworkManager-l2tp-1.20.12
+==========================================================
+
+Changes:
+* Libreswan 5.0 compatibility
+* get_localaddr() for non-ephemeral source port fallback
+* Update Chinese (zh_CN) translation.
+
+==========================================================
+NetworkManager-l2tp-1.20.12
+Overview of changes since NetworkManager-l2tp-1.20.10
+==========================================================
+
+Changes:
+* Add support for usernames that contain a space
+* Fixes MPPE protocol negotiation by not using noccp ppp
+  option when MPPE is selected.
+* Determine correct local IP address for IPSec
+* Update Georgian (ka) translation.
+
+==========================================================
+NetworkManager-l2tp-1.20.10
+Overview of changes since NetworkManager-l2tp-1.20.8
+==========================================================
+
+Changes:
+* Fix missing ppp user option.
+* Add support for compiling against pppd-2.5.0.
+* Add error output for missing TLS filenames.
+* Remove bashisms in configure script.
+* Spell checked code with CSpell.
+
+==========================================================
+NetworkManager-l2tp-1.20.8
+Overview of changes since NetworkManager-l2tp-1.20.6
+==========================================================
+
+Changes:
+* Fix padding of PPP Options dialog.
+* Undo PTP peer & ext GW routing prevention workaround first introduced
+  with NetworkManager-l2tp 1.8.4 as workaround no longer works with
+  NetworkManager 1.36. The actial fix should be done in NetworkManager.
+* Add support for Manual IPv4 configuration options:
+  Address, Netmask and Gateway.
+* Remove deprecated OpenSSL 3 related code
+* Load L2TP kernel modules if NM_L2TP_MODPROBE env variable set.
+
+==========================================================
+NetworkManager-l2tp-1.20.6
+Overview of changes since NetworkManager-l2tp-1.20.4
+==========================================================
+
+Changes:
+* Fix for Libreswan 4.9 and later detection.
+* Fix for ipsec-psk-flags setting not being saved.
+* Fix out-of-bounds access in export_ip4.
+* Add getenv NM_L2TP_XL2TPD_MAX_RETRIES to allow setting the xl2tpd
+  max retries value with an env variable.
+* Drop unused ChangeLog file.
+* Increase IPsec and L2TP daemon wait timeouts for better debugging.
+* Update Georgian (ka) translation.
+
+==========================================================
+NetworkManager-l2tp-1.20.4
+Overview of changes since NetworkManager-l2tp-1.20.2
+==========================================================
+
+Changes:
+* Security fix for properly detecting that strongswan CHILD_SA connection
+  has been estabilished.
+* Fix for libreswan cannot route template policy error.
+
+==========================================================
+NetworkManager-l2tp-1.20.2
+Overview of changes since NetworkManager-l2tp-1.20.0
+==========================================================
+
+Changes:
+* Gtk4 version of the editor plugin is now available (for use with Control
+  Center of GNOME 42 or later).
+* Updated translations.
+
+==========================================================
 NetworkManager-l2tp-1.20.0
 Overview of changes since NetworkManager-l2tp-1.8.6
 ==========================================================
@@ -10,7 +141,7 @@ Changes:
 * deprecated libnm-glib/libnm-util code removed and
   --with-libnm-glib configure option removed.
 * Honors $CHARONDEBUG and $PLUTODEBUG even without --debug.
-* Sourcecode reformated with clang-format.
+* Sourcecode reformatted with clang-format.
 * intltool for i18n build support no longer required.
 * Updated translations.
 
