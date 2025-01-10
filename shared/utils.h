@@ -3,7 +3,7 @@
  * Dan Williams <dcbw@redhat.com>
  *
  * (C) Copyright 2010 Red Hat, Inc.
- * (C) Copyright 2019 Douglas Kosovic <doug@uq.edu.au>
+ * (C) Copyright 2024 Douglas Kosovic <doug@uq.edu.au>
  */
 
 #ifndef __UTILS_H__
@@ -23,6 +23,8 @@ typedef enum {
 } NML2tpL2tpDaemon;
 
 NML2tpIpsecDaemon check_ipsec_daemon(const char *path);
+
+gboolean libreswan_5_or_later(const char *path);
 
 const char *nm_find_ipsec(void);
 

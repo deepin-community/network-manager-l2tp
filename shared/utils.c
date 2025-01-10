@@ -3,7 +3,7 @@
  * Dan Williams <dcbw@redhat.com>
  *
  * (C) Copyright 2010 Red Hat, Inc.
- * (C) Copyright 2019 Douglas Kosovic <doug@uq.edu.au>
+ * (C) Copyright 2024 Douglas Kosovic <doug@uq.edu.au>
  */
 
 #include "nm-default.h"
@@ -24,16 +24,37 @@ check_ipsec_daemon(const char *path)
         if (!output)
             return NM_L2TP_IPSEC_DAEMON_UNKNOWN;
 
-        if (strstr(output, " strongSwan "))
+        if (strstr(output, "strongSwan") != NULL)
             return NM_L2TP_IPSEC_DAEMON_STRONGSWAN;
 
-        if (strstr(output, " Libreswan "))
+        if (strstr(output, "Libreswan") != NULL)
             return NM_L2TP_IPSEC_DAEMON_LIBRESWAN;
 
-        if (strstr(output, " Openswan "))
+        if (strstr(output, "Openswan") != NULL)
             return NM_L2TP_IPSEC_DAEMON_OPENSWAN;
     }
     return NM_L2TP_IPSEC_DAEMON_UNKNOWN;
+}
+
+
+gboolean
+libreswan_5_or_later(const char *path)
+{
+    const char *     argv[] = {path, "--help", NULL};
+    g_autofree char *output = NULL;
+
+    if (path == NULL)
+        return FALSE;
+
+    if (g_spawn_sync(NULL, (char **) argv, NULL, 0, NULL, NULL, &output, NULL, NULL, NULL)) {
+        if (!output)
+            return FALSE;
+
+        /* libreswan 5.0 and later do not have tha auto command */
+        if (strstr(output, "\tauto\t") != NULL || strstr(output, "\tauto\n") != NULL)
+            return FALSE;
+    }
+    return TRUE;
 }
 
 const char *

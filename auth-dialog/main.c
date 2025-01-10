@@ -612,6 +612,5 @@ main(int argc, char *argv[])
                 new_psk ? new_psk : existing_psk,
                 need_machine_certpass,
                 new_machine_certpass ? new_machine_certpass : existing_machine_certpass);
-
     return EXIT_SUCCESS;
 }
