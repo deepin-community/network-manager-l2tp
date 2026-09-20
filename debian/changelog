@@ -1,3 +1,12 @@
+network-manager-l2tp (1.20.20-1deepin1) unstable; urgency=medium
+
+  * fix(cve): CVE-2026-19624 (high) - service: reject control chars in
+    PLUTODEBUG and CHARONDEBUG env vars   Upstream:
+    https://github.com/nm-l2tp/NetworkManager-
+    l2tp/commit/3704d8c9d5e5f9ed1626a8ce7627a04247cea673.patch
+
+ -- deepin-ci-robot <packages@deepin.org>  Sun, 20 Sep 2026 16:29:33 +0800
+
 network-manager-l2tp (1.20.20-1) unstable; urgency=medium
 
   * New upstream version 1.20.20.
