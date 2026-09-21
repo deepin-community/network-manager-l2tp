@@ -4,6 +4,10 @@ network-manager-l2tp (1.20.20-1deepin1) unstable; urgency=medium
     PLUTODEBUG and CHARONDEBUG env vars   Upstream:
     https://github.com/nm-l2tp/NetworkManager-
     l2tp/commit/3704d8c9d5e5f9ed1626a8ce7627a04247cea673.patch
+  * fix(cve): CVE-2026-75131 (unknown) - [PATCH] service: Fix for CVE-
+    2026-75131 & CVE-2026-75883   Upstream: https://github.com/nm-
+    l2tp/NetworkManager-
+    l2tp/commit/64879ce0ad866f7c9a45babe4d95731a916ea00f
 
  -- deepin-ci-robot <packages@deepin.org>  Sun, 20 Sep 2026 16:29:33 +0800
 
