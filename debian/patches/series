@@ -1,3 +1,4 @@
 # Patches for network-manager-l2tp
 CVE-2026-19624.patch
 CVE-2026-75131.patch
+fix-wformat-nonliteral-import-export.patch
